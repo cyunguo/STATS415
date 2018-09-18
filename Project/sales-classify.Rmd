@@ -1,0 +1,264 @@
+---
+title: "sales-classify"
+author: "Wenfei Yan"
+date: "4/2/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Origin Question:
+Can we predict whether the game is rated as "positive", "mixed", or "negative"?
+
+We look in the the user score, with range [0,10]. Since user score is a continuous variable, we tried to classify games with user score in (7.5, 10] as positive, in (5.0. 7.5] as mixed, and [0,5.0] as negative.
+
+```{r}
+# clean the data
+setwd("/Users/Fay/2017-2018_Winter/STATS 415/415Project")
+games = read.csv("./data/Video_Games_Sales_as_at_22_Dec_2016.csv", na.strings=c("N/A","#VALUE!", " "))
+dim(games)
+games.no.na = na.omit(games)
+dim(games.no.na)
+games.no.na = games.no.na[,-1]
+# str(games.no.na)
+games.no.na$User_Score = as.character(games.no.na$User_Score)
+games.no.na$User_Score = as.numeric(games.no.na$User_Score)
+# str(games.no.na)
+# dim(games.no.na)
+# add year
+games.no.na$Year = 2018 - games.no.na$Year_of_Release
+names(games.no.na)
+games.no.na = games.no.na[,-2]
+names(games.no.na)
+```
+
+According to previous observations on the global sales variable, we label the games into 3 categories ...  
+< 0.3 = low (according to median)  
+$>$ 1 = high (easy cut, over 1 million)
+no problem of imbalanced classes
+```{r}
+quantile(games.no.na$Global_Sales)
+# add sales level
+games.no.na$sales.level = "low"
+games.no.na$sales.level[games.no.na$Global_Sales>0.3] = "soso"
+games.no.na$sales.level[games.no.na$Global_Sales>1] = "high"
+sum(games.no.na$Global_Sales>1)
+sum(games.no.na$Global_Sales>0.3 & games.no.na$Global_Sales<=1)
+sum(games.no.na$Global_Sales<=0.3)
+```
+
+```{r}
+names(games.no.na)
+games.no.na = games.no.na[, -c(4,5,6,7,8)]
+names(games.no.na)
+```
+
+```{r}
+# split training and test data
+high = which(games.no.na$sales.level == "high")
+soso = which(games.no.na$sales.level == "soso")
+low = which(games.no.na$sales.level == "low")
+train.id = c(sample(high, floor(0.8*length(high))), 
+             sample(soso, floor(0.8*length(soso))),
+             sample(low, floor(0.8*length(low))))
+```
+
+```{r}
+games.no.na$sales.level = as.factor(games.no.na$sales.level)
+str(games.no.na)
+```
+
+```{r}
+# summary(lm(User_Score~Critic_Score, data = games.no.na))
+# plot(User_Score~Critic_Score, data = games.no.na[sample(1:nrow(games.no.na),1000),])
+```
+
+### KNN
+First I tried KNN. As all the categorical variables have many levels, it's hard to use them in KNN. I just omit all of them. 
+```{r}
+# knn
+library(caret)
+data_knn = games.no.na[,c(4,5,6,7,10,11)]
+names(data_knn)
+# 10-fold cv
+ctrl <- trainControl(method  = "cv", number  = 10)
+knn.fit <- train(sales.level ~ ., data = data_knn[train.id,], method = "knn",
+                 tuneGrid  = expand.grid(k = seq(11,149,2)),
+                 trControl = ctrl, preProcess = c("center","scale"))
+plot(Accuracy~k, data = knn.fit$results)
+best = knn.fit$result[knn.fit$result$Accuracy == max(knn.fit$results$Accuracy),]
+best
+best$Accuracy
+pred_test = predict(knn.fit, newdata = data_knn[-train.id,])
+table(pred_test, data_knn$sales.level[-train.id])
+(103+634+119)/length(pred_test)
+```
+The cv-accuracy is not satysfying. Try dim-reduction (PCA), see if better. 0.62
+```{r}
+X <- model.matrix(sales.level ~ ., data = data_knn[train.id,])[, -1]
+knn.PCA = prcomp(x = X, center = T, scale = T)
+summary(knn.PCA)
+screeplot(knn.PCA)
+
+data.knn.PCA = as.data.frame(knn.PCA$x[,c(1,2,3,4)])
+data.knn.PCA$sales.level = data_knn$sales.level[train.id]
+# head(data.knn.PCA)
+ctrl <- trainControl(method  = "cv", number  = 10)
+knn.fit.PCA <- train(sales.level ~ ., data = data.knn.PCA, method = "knn", 
+                     tuneGrid   = expand.grid(k = seq(11,149,2)),
+                     trControl = ctrl, preProcess = c("center","scale"))
+plot(Accuracy~k, data = knn.fit.PCA$results)
+best = knn.fit.PCA$result[knn.fit.PCA$result$Accuracy == max(knn.fit.PCA$results$Accuracy),]
+best$Accuracy
+```
+Unfortunately, there's no apparent improvement. KNN might not be suitable. 0.60
+
+### Desicion Tree
+As the tree funtion in pacakge tree can not deal with factors with more than 32 levels, I delete some of the facotr predictors, who have too many levels. Year_of_Release, Publisher and Developer are deleted.
+```{r}
+library(tree)
+data_tree = games.no.na[, -c(3, 8)]
+# data_tree = games.no.na[, c(9,10,16)]
+names(games.no.na)
+tree.fit = tree(sales.level ~ ., data = data_tree[train.id,])
+tree.fit
+summary(tree.fit)
+set.seed(2109)
+tree.fit.cv = cv.tree(tree.fit, FUN = prune.misclass)
+tree.fit.cv
+prune.tree.fit = prune.misclass(tree.fit, best = 5)
+prune.tree.fit
+summary(prune.tree.fit)
+# test error
+tree.pred=predict(prune.tree.fit, data_tree[-train.id,], type="class")
+length(tree.pred)
+table(tree.pred,data_tree$sales.level[-train.id])
+sum(tree.pred!=data_tree$sales.level[-train.id])/1379
+```
+The training and test error are both around 0.4423, a little bit better than knn, but still not ideal.
+0.3787
+### Random Forest
+As the randomForest funtion in pacakge randomForest can not deal with factors with more than 53 levels, I delete some of the facotr predictors, who have too many levels. Publisher and Developer are deleted.
+```{r}
+library(randomForest)
+data_rf = games.no.na[, -c(3, 8)]
+n_range = seq(100,1000, by = 10)
+test_error = rep(0, length(n_range))
+for (i in 1:length(n_range)) {
+rf.fit = randomForest(sales.level ~ ., data = data_rf[train.id,], ntree = n_range[i])
+ypred.rf = predict(rf.fit,newdata = data_rf[-train.id,])
+test_error[i] = sum(ypred.rf!=data_rf$sales.level[-train.id])/1379
+}
+min(test_error)
+n_range[which(test_error == min(test_error))]
+plot(n_range, test_error, main = "Test error of Random Forest", 
+     xlab = "number of trees", ylab = "test error")
+```
+### random forest seems not sensitive to value of ntree
+```{r}
+rf.fit = randomForest(sales.level ~ ., data = data_rf[train.id,], ntree = 500, importance = TRUE)
+importance(rf.fit)
+varImpPlot(rf.fit, main = "Importance of Variables")
+ypred.rf = predict(rf.fit,newdata = data_rf[-train.id,])
+table(ypred.rf, data_rf$sales.level[-train.id])
+sum(ypred.rf!=data_rf$sales.level[-train.id])/1379
+```
+The best test error is around 0.3067. However, this is still not desirable.
+
+Critic score is always the most important predictor.
+
+### Ada boost
+```{r}
+# library(gbm)
+# data_boost = games.no.na[, -c(3, 8)]
+# data_boost$user.score.positive = as.numeric(data_boost$user.score.positive)-1
+# boost.fit = gbm(user.score.positive ~ ., data = data_boost[train.id,], distribution = "adaboost", n.trees = 2700)
+# boost.test.pred = predict(boost.fit, newdata = data_boost[-train.id,], n.trees = 2700)
+# boost.test.pred = sign(boost.test.pred)
+# boost.test.pred[boost.test.pred==-1] = 0
+# sum(boost.test.pred != data_boost$user.score.positive[-train.id])/1404
+```
+```{r}
+# install.packages("adabag")
+library("adabag")
+data_boost = games.no.na[, -c(3, 8)]
+boost_fit = boosting(sales.level ~ ., data = data_boost[train.id, ], mfinal = 1000)
+length(boost_fit$class)
+sum(boost_fit$class!=data_tree$sales.level[train.id])/5514
+test_pred = predict(boost_fit, newdata = data_boost[-train.id, ])
+test_pred$confusion
+sum(test_pred$class!=data_tree$sales.level[-train.id])/1379
+```
+
+The best test error is around 0.3445, worse than the random forest result.
+
+
+### SVM
+```{r}
+# linear
+library(e1071)
+data_svm = games.no.na[,]
+test_error = rep(0,8)
+c_range = c(0.1, 0.5, 1 , 3, 5, 10, 15, 20)
+for (i in seq(1,length(c_range))){
+svm.fit <- svm(sales.level ~ ., data = data_svm[train.id,], 
+               kernel = "linear", cost = c_range[i], scale = TRUE)
+svm.test.pred = predict(svm.fit, newdata = data_svm[-train.id,])
+test_error[i] = sum(svm.test.pred!=data_tree$sales.level[-train.id])/1379
+}
+min(test_error)
+# [1] 0.3147208
+c_range[which(test_error == min(test_error))] 
+# [1] 0.5
+plot(c(0.1, 0.5, 1 , 3, 5, 10, 15, 20), test_error, main = "SVM")
+```
+```{r}
+# radial
+svm.fit.rad <- svm(sales.level ~ ., data = data_svm[train.id,], 
+               kernel = "radial", gamma = 0.5, cost = 2,scale = TRUE)
+svm.test.pred = predict(svm.fit.rad, newdata = data_svm[-train.id,])
+table(svm.test.pred, data_svm$sales.level[-train.id])
+sum(svm.test.pred!=data_tree$sales.level[-train.id])/1379
+```
+
+
+```{r}
+# here I only tune the gamma, can then turn back to tune the cost with given gamma
+# otherwise it will cost too long
+tune.out <- tune(svm, sales.level~., data = data_svm[train.id,], kernel = "radial",
+                 ranges = list(gamma = c(0.5, 1, 2, 3, 4)))
+summary(tune.out)
+tune.out$best.model
+# best: cost = 1, gamma = 0.5
+test_pred = predict(tune.out$best.model, newdata = data_svm[-train.id,])
+table(test_pred, data_svm$sales.level[-train.id])
+sum(test_pred!=data_svm$sales.level[-train.id])/1379
+```
+The best test error for linear kernal is around 0.3147.
+radial: 0.3075.
+
+
+## LDA
+```{r}
+library(MASS)
+names(games.no.na)
+data_lda = games.no.na[,-c(1,2,3,8,9)]
+lda_fit = lda(sales.level~., data = data_lda[train.id,])
+lda_test_pred = predict(lda_fit, data_lda[train.id,])$class
+sum(lda_test_pred!=data_lda$sales.level[train.id])/5514
+```
+Test error of LDA: 0.4039
+
+## QDA
+```{r}
+library(MASS)
+data_qda = games.no.na[,-c(1,2,3,8,9)]
+qda_fit = qda(sales.level~., data = data_qda[train.id,])
+qda_test_pred = predict(qda_fit, data_qda[train.id,])$class
+sum(qda_test_pred!=data_qda$sales.level[train.id])/5514
+```
+Test error of LDA: 0.4206
+
+

@@ -1,0 +1,140 @@
+---
+title: "STATS415hw3"
+author: "Yunguo Cai"
+date: "1/29/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Load the 'ISLR' package to get Carseats data set and use the first 90% of the observations for training and the remaining 10% for testing.
+```{r}
+library('ISLR')
+#Divide the data into training and test sets
+set.seed(100)
+train_id = 1:floor(nrow(Carseats)*.9)
+trainCarseats <- Carseats[train_id,] 
+testCarseats <- Carseats[-train_id,]
+```
+1.
+```{r msefunction}
+mse <- function(model, y, data) {
+  # model is an lm object (a linear regression)
+  # y is the response variable from model
+  # data is the dataset we want to use to compute fitted values using our model
+  
+  # The predict function computes fitted values when given a model and predictor data
+  yhat <- predict(model, data)
+  mean((y - yhat)^2)
+}
+```
+
+```{r}
+#multiple regression model to predict Sales using all other variables
+model1 = lm(Sales ~., data = trainCarseats)
+#a reduced model with everything except for Population, Education, Urban, and US
+model2 = lm(Sales ~.- Population - Education -Urban - US , data = trainCarseats)
+summary(model1)
+summary(model2)
+```
+
+```{r}
+#training and test error for model 1 and 2
+train_mse_1 = mse(model1,trainCarseats$Sales,trainCarseats)
+test_mse_1 = mse(model1,testCarseats$Sales,testCarseats)
+train_mse_1
+test_mse_1
+train_mse_2 = mse(model2,trainCarseats$Sales,trainCarseats)
+test_mse_2 = mse(model2,testCarseats$Sales,testCarseats)
+train_mse_2
+test_mse_2
+```
+The MSE using the training data for model1 is 1.010792, while the MSE using the test data for model1 is 0.9903956. The two values are very close to each other, which means that model1 is not overfitted. The MSE using the training data for model2 is 1.021013, while the MSE using the test data for model2 is 1.0041. The two values are very close to each other, which means that model2 is not overfitted.       
+
+In comparison with model1, both training error and test error for model2 increase a little bit though they???re still close. It shows that though model1 has higher flexibility with 4 more variables, model2 performs almost as well as model1 in prediction. Model2 is a better choice with high accuracy but fewer variables. For both model1 and model2, traing error is slightly bigger than test error. It might be caused by the observations in the training data set is 90%, which is 9 times more than the observations in the test data set and thus results in bigger error.    
+
+2.     
+
+I would expect a better training error with K = 1. When K = 1, the model is more flexible than the model when K = 10. For the training data, the predicted value are usually just itself. Thus the training error will be very small.
+By contrast, I would expect a better test error with K = 10. When K = 1, the model is very likely to be overfitted and thus its performance to predict test data will be worse than the model with K = 10.   
+
+3. 
+     
+I would standardize the variables in the dataset first. The ranges and units of different variables are quite different. Weighted distances have been used to emphasize some variables over others. For example, CompPrice and Price contain much larger numbers than Advertising. However, CompPrice and Price are not necessarily more important than Advertising. So without standardization, the KNN model will be influenced a lot. When not knowing the importance of each variable, standardize all the variables at first so that all the variables will have the same weight in the KNN model is the best practice.
+```{r knnRegressionTrain}
+library("FNN")
+knn_train_carseats = trainCarseats[c(1,2,3,4,6,8)]
+knn_test_carseats = testCarseats[c(1,2,3,4,6,8)]
+n=50
+k_range  = c(1,2,5,8,10,12,13,15,25,40,50,100,353) 
+trainMSE = c() #creating null vector
+
+for(i in 1:length(k_range)){
+  knnTrain <- knn.reg(train = scale(knn_train_carseats[,-1]), 
+                      test = scale(knn_train_carseats[,-1]),
+                      y = knn_train_carseats$Sales, 
+                      k = k_range[i])
+  trainMSE[i] <- mean((knn_train_carseats$Sales-knnTrain$pred)^2)
+}
+```
+
+```{r knnRegressionTest}
+testMSE = c() #creating null vector
+for(i in 1:length(k_range)){
+  knnTest <- knn.reg(train = scale(knn_train_carseats[,-1]), 
+                     test = scale(knn_test_carseats[,-1]),
+                      y = knn_train_carseats$Sales, 
+                     k = k_range[i])
+  testMSE[i] <- mean((knn_test_carseats$Sales - knnTest$pred)^2)
+}
+```
+
+```{r knnMSE}
+k_inverse=1/k_range
+plot(trainMSE ~ k_inverse, type = "b", lwd = 2, col = "blue",
+main = "Training and Test MSE for KNN", xlab = "1/K", ylab = "MSE",ylim = c(0,10))
+# Add the test MSE
+lines(testMSE ~ k_inverse, type = "b", lwd = 2, col = "red")
+legend("topleft", legend = c("Training KNN", "Test KNN"), col = c("blue", "red"),
+cex = .75, lwd = c(2, 2), pch = c(1, 1), lty = c(1, 1))
+```
+```{r}
+which(trainMSE==min(trainMSE))
+```
+```{r}
+which(testMSE==min(testMSE))
+```
+The training error is the smallest when K=1. The test error is the smallest when K=5.    
+The training error keeps decreasing when K decreases. By contrast, as K decreases, the test error first decreases, reaches the smallest at some point (in this case, K=5), and then turns to increase. This case of MSE plot of test error agrees to the theory that a model with too much flexibility may overfit so that it gets smaller training error but larger test error as K decreases.
+     
+5
+```{r}
+pred_y_2 = predict(model2, testCarseats)
+model2_residuals = testCarseats$Sales - pred_y_2
+plot(model2_residuals~pred_y_2, xlab = 'Fitted Values', xlim = c(2,16), ylim = c(-2,4), 
+ylab = 'Residuals', main = 'Residual Plot against fitted values for model2 for Test Data') 
+abline(0,0)
+```
+```{r}
+knnTest <- knn.reg(train = scale(knn_train_carseats[,-1]), 
+                   test = scale(knn_test_carseats[,-1]),
+                   y = knn_train_carseats$Sales, 
+                   k = 5)
+test_residuals <- testCarseats$Sales - knnTest$pred
+plot(test_residuals~knnTest$pred, xlab = 'Fitted Values', xlim = c(2,16), ylim = c(-3,6), 
+ylab = 'Residuals', main = 'Residual Plot against fitted values for KNN model for Test Data') 
+abline(0,0)
+```
+     
+
+The two plots for linear regression model and KNN model separately are quite different. The similarity of the two plots is that most points are between the fitted values 6-8. The diffrence is that the linear model has a wider range in fitted values while a smaller range in residuals. For model2, the linear regression model, the residuals ranges roughly from -2 to 3, and the fitted values ragnes roughly from 2 to 16. For the KNN model with K=5, the residuals ranges roughly from -3 to 6, and the fitted values ragnes roughly from 4 to 12. It shows that the linear regression model has smaller test error than the KNN model with the optimal K=5 which has the smallest test error among all the KNN models with different K values. 
+```{r}
+test_mse_2
+knnTest_mse = mean((knn_test_carseats$Sales - knnTest$pred)^2)
+knnTest_mse
+```
+The test MSE of the linear regression model2 is only 1.0041, while the test MSE of the KNN regression model with K=5 is 5.985387, which proves that KNN has bigger MSE. The fitted value of KNN model seems to be more concentrated than the linear regression model2. The reason for this might be that KNN model considers K closest data points and take the average of their responses, so extreme values are less likely to occur and the fitted values are thus more concentrated.   
+From the residual plots, it shows that model2 performs better than the knn model with k=5 in prediction with smaller residuals. In general, the KNN model should perform better. As long as n/K>p, KNN is more flexible than a linear model with p predictors. However, in this case KNN model performs worse and the MSE is much bigger than the linear model2. The reason for this might be the choice of training data. We use the first 90% of the observations for training data and the remaining 10% for testing. We haven't randomly chosen the training data, which might cause some bias. It may also caused by the overfitting of the KNN model. In all, linear regression model is eaiser to interpret as a less flexible method.
+
+

@@ -1,0 +1,355 @@
+---
+title: "STATS 415 Lab4"
+author: "Weijing Tang"
+date: "Feb 1, 2018"
+header-includes:
+  - \usepackage{float}
+  - \usepackage{hyperref}
+  - \hypersetup{breaklinks,colorlinks,allcolors=blue,pdfpagemode=UseNone}
+output:
+  pdf_document:
+    number_sections: true
+# output:
+#   html_document:
+#     toc: TRUE
+#     toc_depth: 2
+#     toc_float: TRUE
+#     theme: lumen
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, fig.height = 4, fig.width = 5, fig.align = "center", fig.pos = "H")
+```
+
+# Today's objectives
+1. Recall data visualization and how to split training and test data. 
+2. Practice how to implement LDA and QDA and calculate test and training error.
+3. If time permitted, exercise to perform LDA and QDA step by step.
+
+# Data and necessary packages
+In this lab, we will use Iris data to perform LDA and QDA. Recall that **Species** is a three-level categorical variable. We will use it as the target of classification.
+```{r, warning=FALSE}
+data(iris)
+```
+
+# Test-train Split
+The estimated priors of LDA and QDA is the proportion of each class, which we will go over later. So to remove unnecessary variance, we should split each class proportionately for training and testing.
+```{r}
+set.seed(430)
+table(iris$Species)
+iris_setosa = which(iris$Species == "setosa")
+iris_versi = which(iris$Species == "versicolor")
+iris_virg = which(iris$Species == "virginica")
+train_id = c(sample(iris_setosa, size = trunc(0.70 * length(iris_setosa))),
+             sample(iris_versi, size = trunc(0.70 * length(iris_versi))),
+             sample(iris_virg, size = trunc(0.70 * length(iris_virg))))
+iris_train = iris[train_id, ]
+iris_test = iris[-train_id, ]
+```
+
+# Data Visualization
+Let's explore the training data graphically to have a glance at the relationship between **Species** and the other variables. Remember that our target is **Species**, we can use different colors or symbols to distinguish them in the plots.
+
+## Scatter Plots
+```{r, fig.height=8, fig.width=8}
+pairs(iris_train[1:4], col=c("blue", "green","red")[iris_train$Species],
+      oma=c(4,4,6,12), pch=c(1,2,3)[iris_train$Species])
+par(xpd=TRUE)
+legend(0.85, 0.7, as.vector(unique(iris_train$Species)), 
+       col=c("blue", "green", "red"), pch=1:3)
+```
+
+## Side-by-side Boxplots
+```{r, fig.height=8, fig.width=8}
+par(mfrow=c(2,2))
+plot(iris_train$Species,iris_train$Sepal.Length, main = "Sepal.Length vs Species", 
+     ylab = "Sepal.Length")
+plot(iris_train$Species,iris_train$Sepal.Width, main = "Sepal.Width vs Species",
+     ylab = "Sepal.Width")
+plot(iris_train$Species,iris_train$Petal.Length, main = "Petal.Length vs Species", 
+     ylab = "Petal.Length")
+plot(iris_train$Species,iris_train$Petal.Width, main = "Petal.Width vs Species", 
+     ylab = "Petal.Width")
+```
+
+**Question:** Which of features seem most likely to be useful in predicting **Species**?
+\vspace{4cm}
+
+
+
+# Generative Models
+
+In this lab, we continue our discussion of classification methods. We will implement new methods, LDA and QDA, each a **generative** method.
+
+Generative methods model the joint probability, $p(x, y)$, often by assuming some distribution for the conditional distribution of $X$ given $Y$, $f(x \mid y)$. Bayes theorem is then applied to classify according to $p(y \mid x)$. 
+
+LDA and QDA will use Bayes theorem to build a classifier.
+
+$$
+p_k(x) = P(Y = k \mid X = x) = \frac{\pi_k \cdot f_k(x)}{\sum_{g = 1}^{G} \pi_g \cdot f_g(x)}
+$$
+
+We call $p_k(x)$ the **posterior** probability, which we will estimate then use to create classifications. The $\pi_g$ are called the **prior** probabilities for each possible class $g$. That is, $\pi_g = P(Y = g)$, unconditioned on $X$. The $f_g(x)$ are called the **likelihoods**, which are indexed by $g$ to denote that they are conditional on the classes. The denominator is often referred to as a **normalizing constant**.
+
+Classifications are made to the class with the highest estimated posterior probability, which is equivalent to the class with the largest
+
+$$
+\hat{p}_k(x)\propto\hat{\pi}_k \cdot \hat{f}_k({\mathbf x}).
+$$
+
+# Linear Discriminant Analysis
+
+LDA assumes that the predictors are multivariate normal conditioned on the classes.
+
+$$
+X \mid Y = k \sim N(\mu_k, \Sigma)
+$$
+
+$$
+f_k({\mathbf x}) = \frac{1}{(2\pi)^{p/2}|\Sigma|^{1/2}}\exp\left[-\frac{1}{2}(\mathbf x - \mu_k)^{\prime}\Sigma^{-1}(\mathbf x - \mu_k)\right]
+$$
+
+Notice that $\Sigma$ does **not** depend on $k$, that is, we are assuming the same $\Sigma$ for each class. We then use information from all the classes to estimate $\Sigma$.
+
+To fit an LDA model, we use the `lda()` function from the `MASS` package.
+
+```{r}
+library(MASS)
+iris_lda = lda(Species ~ ., data = iris_train)
+iris_lda
+```
+
+**Question:** Where are the estimated $\hat{\pi}_k$ and $\hat{\mu}_k$ for each class?
+\vspace{4cm}
+
+
+
+The `predict()` function operates in a new way when called on an `lda` object. By default, it returns an entire list. Within that list `class` stores the classifications and `posterior` contains the estimated probability for each class.
+
+```{r}
+names(predict(iris_lda, iris_train))
+head(predict(iris_lda, iris_train)$class, n = 9)
+head(predict(iris_lda, iris_train)$posterior, n = 9)
+```
+
+## Training and test error
+We store the predictions made on the training and test sets.
+```{r}
+iris_lda_train_pred = predict(iris_lda, iris_train)$class
+iris_lda_test_pred = predict(iris_lda, iris_test)$class
+```
+
+We write a function named **calc_class_err** to calculate error. (Recall **mse** in Lab3.)
+
+```{r}
+calc_class_err = function(actual, predicted) {
+  mean(actual != predicted)
+}
+```
+
+```{r}
+calc_class_err(predicted = iris_lda_train_pred, actual = iris_train$Species)
+calc_class_err(predicted = iris_lda_test_pred, actual = iris_test$Species)
+table(predicted = iris_lda_test_pred, actual = iris_test$Species)
+```
+**Question:** How does LDA perform?
+\vspace{4cm}
+
+
+## Visualize results
+
+```{r}
+plot(iris_test$Sepal.Length,iris_test$Petal.Length, 
+     col = c("blue", "green","red")[iris_test$Species],
+     xlab = "Sepal.Length", ylab = "Petal.Length",
+     main = "True class vs Predicted class by LDA"
+     )
+points(iris_test$Sepal.Length,iris_test$Petal.Length, 
+     pch = c(2,3,5)[iris_lda_test_pred])
+
+legend("bottomright", c("true_setosa","true_versicolor","true_virginica",
+                    "pred_setosa","pred_versicolor","pred_virginica"), 
+       col=c("blue", "green", "red", "black", "black", "black"),
+       pch=c(1,1,1,2,3,5))
+```
+
+
+## Pre-specified Priors
+Instead of learning (estimating) the proportion of the three species from the data, we could instead specify them ourselves. Here we choose a nonuniform distributions over the possible species.
+```{r}
+iris_lda2 = lda(Species ~ ., data = iris_train, prior = c(4, 1, 1) / 6)
+iris_lda2
+```
+
+```{r}
+iris_lda_train_pred2 = predict(iris_lda2, iris_train)$class
+iris_lda_test_pred2 = predict(iris_lda2, iris_test)$class
+```
+
+```{r}
+calc_class_err(predicted = iris_lda_train_pred2, actual = iris_train$Species)
+calc_class_err(predicted = iris_lda_test_pred2, actual = iris_test$Species)
+table(predicted = iris_lda_test_pred2, actual = iris_test$Species)
+```
+
+This actually gives the same test accuracy.
+
+
+# Quadratic Discriminant Analysis
+
+QDA also assumes that the predictors are multivariate normal conditioned on the classes.
+
+$$
+X \mid Y = k \sim N(\mu_k, \Sigma_k)
+$$
+
+$$
+f_k({\mathbf x}) = \frac{1}{(2\pi)^{p/2}|\Sigma_k|^{1/2}}\exp\left[-\frac{1}{2}(\mathbf x - \mu_k)^{\prime}\Sigma_{k}^{-1}(\mathbf x - \mu_k)\right]
+$$
+
+Notice that now $\Sigma_k$ **does** depend on $k$, that is, we are allowing a different $\Sigma_k$ for each class. We only use information from class $k$ to estimate $\Sigma_k$. 
+
+Like `lda()`, the `qda()` function is found in the `MASS` package.
+```{r}
+iris_qda = qda(Species ~ ., data = iris_train)
+iris_qda
+```
+
+Here the output is similar to LDA, again giving the estimated $\hat{\pi}_k$ and $\hat{\mu}_k$ for each class. 
+
+The `predict()` function operates the same as the `predict()` function for LDA.
+```{r}
+iris_qda_train_pred = predict(iris_qda, iris_train)$class
+iris_qda_test_pred = predict(iris_qda, iris_test)$class
+```
+
+
+```{r}
+calc_class_err(predicted = iris_qda_train_pred, actual = iris_train$Species)
+calc_class_err(predicted = iris_qda_test_pred, actual = iris_test$Species)
+table(predicted = iris_qda_test_pred, actual = iris_test$Species)
+```
+
+
+**Question:** How does QDA perform?
+\vspace{4cm}
+
+
+
+## Visualize results
+
+```{r}
+plot(iris_test$Sepal.Length,iris_test$Petal.Length, 
+     col = c("blue", "green","red")[iris_test$Species],
+     xlab = "Sepal.Length", ylab = "Petal.Length",
+     main = "True class vs Predicted class by QDA"
+     )
+points(iris_test$Sepal.Length,iris_test$Petal.Length, 
+     pch = c(2,3,5)[iris_qda_test_pred])
+
+legend("bottomright", c("true_setosa","true_versicolor","true_virginica",
+                    "pred_setosa","pred_versicolor","pred_virginica"), 
+       col=c("blue", "green", "red", "black", "black", "black"),
+       pch=c(1,1,1,2,3,5))
+```
+
+```{r, include=FALSE}
+classifiers = c("LDA", "LDA, Nonuniform Prior", "QDA")
+
+train_err = c(
+  calc_class_err(predicted = iris_lda_train_pred,      actual = iris_train$Species),
+  calc_class_err(predicted = iris_lda_train_pred2, actual = iris_train$Species),
+  calc_class_err(predicted = iris_qda_train_pred,      actual = iris_train$Species)
+)
+
+test_err = c(
+  calc_class_err(predicted = iris_lda_test_pred,      actual = iris_test$Species),
+  calc_class_err(predicted = iris_lda_test_pred2, actual = iris_test$Species),
+  calc_class_err(predicted = iris_qda_test_pred,      actual = iris_test$Species)
+)
+
+results = data.frame(
+  classifiers,
+  train_err,
+  test_err
+)
+
+colnames(results) = c("Method", "Train Error", "Test Error")
+```
+
+```{r, echo=FALSE}
+knitr::kable(results)
+```
+
+
+**Question:** What if compared with LDA?
+\vspace{4cm}
+
+
+
+# Exercise*
+
+Suppose our data $(x_i,y_i),i=1,\cdots,n_0+n_1$ are generated from the following model:
+
+for $i=1,\cdots,n_0$,
+\[y_i=0,\ \ x_i|y_i=0\sim N(\mu_0,\sigma^2_0)\]
+for $i=n_0+1,\cdots,n_0+n_1$
+\[y_i=1,\ \ x_i|y_i=1\sim N(\mu_1,\sigma_1^2)\]
+
+## **Question:** How to derive the LDA and QDA rules?
+
+The LDA and QDA classifiers are defined by optimizing
+\[\widehat{C}(x) = {\arg\max}_{k=0,1} P(y=k|x)\]
+
+Recall that 
+\[P(y=k|x)\propto P(x|y=k)P(y=k)\]
+where for LDA,
+\[P(x|y=k)=\frac{1}{\sqrt{2\pi\sigma^2}}\exp(-\frac{(x-\mu_k)^2}{2\sigma^2}),\]
+we assume the variance is the same between two classes. So here $\sigma^2$ is the pooled covariance
+\[\sigma^2 = \frac{(n_0-1)\sigma_0^2+(n_1-1)\sigma_1^2}{n_1+n_0-2}.\]
+And for QDA,
+\[P(x|y=k)=\frac{1}{\sqrt{2\pi\sigma^2_k}}\exp(-\frac{(x-\mu_k)^2}{2\sigma^2_k}).\]
+
+
+The classifiers can be simplified as optimizing over the discriminant function $\delta_k$ so that for a given value $x_0$ the classifier is defined as 
+\[
+\widehat{C}(x_0) = {\arg\max}_{k=0,1} \delta_k(x_0)
+\]
+where for LDA
+\[
+\delta_k(x) = \frac{x\mu_k}{\sigma^2} - \frac{\mu_k^2}{2\sigma^2} + \log\pi_k
+\]
+and for QDA
+\[
+\delta_k(x) = -\log(\sigma_k) - \frac{(x-\mu_k)^2}{2\sigma_k^2} + \log\pi_k
+\]
+
+Here we estimate $\pi_0=\frac{n_0}{n_0+n_1}$ and $\pi_1=\frac{n_1}{n_0+n_1}$.
+
+For LDA, we predict the class of y as 1 only if 
+\[\frac{x\mu_1}{\sigma^2} - \frac{\mu_1^2}{2\sigma^2} + \log\pi_1>\frac{x\mu_0}{\sigma^2} - \frac{\mu_0^2}{2\sigma^2} + \log\pi_0\]
+i.e.
+\[x(\mu_1-\mu_0)>\mu_1^2/2-\mu_0^2/2+\sigma^2\log\frac{n_0}{n_1}\]
+\[x>\frac{\mu_1^2/2-\mu_0^2/2+\sigma^2\log\frac{n_0}{n_1}}{\mu_1-\mu_0}\]
+which is actually solving a linear inequality.
+
+For QDA, we predict the class of y as 1 only if
+\[-\log(\sigma_1) - \frac{(x-\mu_1)^2}{2\sigma_1^2} + \log\pi_1> -\log(\sigma_0) - \frac{(x-\mu_0)^2}{2\sigma_0^2} + \log\pi_0\]
+which is solving a quadradic inequality.
+
+
+## **Question:** Given $\mu_0=2.5,\mu_1=-1,\sigma_0^2=1,\sigma_1^2=2$ and $n_0=100,n_1=150$, what is the test error of the following test dataset?
+\begin{center}
+\begin{tabular}{|l||r|r|r|r|r|}
+\hline
+$x$ & 4 & 3.8 & 0.5 & 0 & -5 \\
+\hline
+$y$ & 0 & 0 & 1 & 1 & 1 \\
+\hline
+\end{tabular}
+\end{center}
+You can use R as a calculator.
+\vspace{4cm}
+
+# Resources and References
+1. https://daviddalpiaz.github.io/r4sl/generative-models.html#linear-discriminant-analysis

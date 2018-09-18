@@ -1,0 +1,152 @@
+---
+title: "STATS415hw6"
+author: "Yunguo Cai"
+date: "3/2/2018"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+1.   
+
+(a) Best option: (3)
+
+As we increase s from 0, the number of variables included in the model will steadily increase because more $\beta s$ are incorporated in the model.
+
+(b) Best option: (4)    
+
+As we increase s from 0, the training RSS will steadily decreases because the model becomes more flexible with the increasing s and thus $\beta_j$ is constrained and will be more and more close to the least squares estimate.
+
+(c) Best option: (2)     
+
+As we increase s from 0, the test RSS will deacrease intially, and then eventually start increasing because $\beta_j$ is firstly constrained close to 0 for overfitting, resulting in decrease and coefficients are then removed from the model with the increasing of s, resulting in increase.
+
+(d) Best option: (3)    
+
+As we increase s from 0, the variance of $\hat{\beta}$ will steadily increase because more $\beta s$ are incorporated in the model, which increases the variance.
+
+(e) Best option: (4)     
+
+As we increase s from 0, the squared bias of $\hat{\beta}$ will steadily decrease because the model is highly biased when s = 0 and then the bias is decreased. The coefficients will increase to their least squares estimates and the model is becoming more and more flexible which provokes a steady decrease in bias.
+
+2.(a)
+```{r}
+library(ISLR)
+library(glmnet)
+library(boot)
+library(leaps)
+library(SignifReg)
+set.seed(23456)
+data("College")
+```
+
+```{r}
+# Randomly pick observations from the data for the test data
+test_id = sample(1:nrow(College),size=floor(0.30*length(1:nrow(College))))
+College_train <- College[-test_id, ]
+College_test <- College[test_id, ]
+```
+(b)
+```{r}
+fit_linear <- lm(Apps ~ ., data = College_train)
+mse = function(model, y, data) {
+  yhat = predict(model, data)
+  mean((y - yhat)^2)
+}
+training_err_linear = mse(fit_linear, College_train$Apps, College_train)
+training_err_linear
+test_err_linear = mse(fit_linear, College_test$Apps, College_test)
+test_err_linear
+```
+The training error is 993164.6, and the test error is 1300431.
+
+(c)
+```{r}
+#forward selection
+regfit_fwd = SignifReg(Apps~., data = College_train, alpha = 0.05, direction = "forward", 
+                       criterion = "p-value", correction = "FDR")
+summary(regfit_fwd)
+training_err_fwd = mse(regfit_fwd, College_train$Apps, College_train)
+training_err_fwd
+test_err_fwd = mse(regfit_fwd, College_test$Apps, College_test)
+test_err_fwd
+
+#backward selection
+regfit_bwd = SignifReg(Apps~., data = College_train, alpha = 0.05, direction = "backward", 
+                       criterion = "p-value", correction = "FDR")
+summary(regfit_bwd)
+training_err_bwd = mse(regfit_bwd, College_train$Apps, College_train)
+training_err_bwd
+test_err_bwd = mse(regfit_bwd, College_test$Apps, College_test)
+test_err_bwd
+```
+By forward selection, the variables PrivateYes, Accept, Enroll, Top10perc, Top25perc, PhD and Expend are recommended to include in the final model. The train error is 1043037, and the test error is 1334782.     
+By backward selection, the variables PrivateYes, Accept, Enroll, Top10perc, Top25perc, Outstate and Expend are recommended to include in the final model. The train error is 1021693, and the test error is 1355206.
+
+(d)
+```{r}
+regfit.full = regsubsets(Apps~., data = College_train, nvmax = 18)
+reg.summary = summary(regfit.full)
+#AIC
+id_AIC = which.min(reg.summary$cp)
+coef(regfit.full, id_AIC)
+names(coef(regfit.full, id_AIC))
+model_AIC = lm(Apps ~ Private+Accept+Enroll+Top10perc+Top25perc+Outstate+Room.Board+PhD+Expend
+               +Grad.Rate, data = College_train)
+training_err_AIC = mse(model_AIC, College_train$Apps, College_train)
+training_err_AIC
+test_err_AIC = mse(model_AIC, College_test$Apps, College_test)
+test_err_AIC
+#BIC
+id_BIC = which.min(reg.summary$bic)
+coef(regfit.full, id_BIC)
+names(coef(regfit.full, id_BIC))
+model_BIC = lm(Apps ~ Private+Accept+Enroll+Top10perc+Outstate+Expend, data = College_train)
+training_err_BIC = mse(model_BIC, College_train$Apps, College_train)
+training_err_BIC
+test_err_BIC = mse(model_BIC, College_test$Apps, College_test)
+test_err_BIC
+```
+By AIC criterian, the variables PrivateYes, Accept, Enroll, Top10perc, Top25perc, Outstate, Room.Board, PhD, Expend, and Grad.Rate are recommended to include in the final model. The train error is 1001215, and the test error is 1282321.   
+
+By BIC criterian, the variables PrivateYes, Accept, Enroll, Top10perc, Outstate, and Expend are recommended to include in the final model. The train error is 1033273, and the test error is 1380054.
+
+(e)
+```{r}
+X = model.matrix(Apps~., College_train)[, -1]
+y = College_train$Apps
+grid = 10^seq(10, -2, length = 100)
+ridge.mod = glmnet(X, y, alpha = 0, lambda = grid)
+cv.out_ridge = cv.glmnet(X, y, alpha = 0)
+minlam_ridge = cv.out_ridge$lambda.min
+minlam_ridge
+ridge.pred_train = predict(ridge.mod, s = minlam_ridge, newx = X)
+training_err_ridge = mean((ridge.pred_train - y)^2)
+training_err_ridge
+ridge.pred_test = predict(ridge.mod, s = minlam_ridge, newx = model.matrix(Apps~., College_test)[, -1])
+test_err_ridge = mean((ridge.pred_test - College_test$Apps)^2)
+test_err_ridge
+```
+The value of $\lambda$ chosen by smallest cross-validation error is 411.4072. The train error is 1384811, and the test error is 1223126.    
+
+(f)
+```{r}
+set.seed(23456)
+lasso.mod = glmnet(X, y, alpha = 1, lambda = grid)
+cv.out_lasso = cv.glmnet(X, y, alpha = 1)
+minlam_lasso = cv.out_lasso$lambda.min
+minlam_lasso
+lasso.pred_train = predict(lasso.mod, s = minlam_lasso, newx = X)
+training_err_lasso = mean((lasso.pred_train - y)^2)
+training_err_lasso
+lasso.pred_test = predict(lasso.mod, s = minlam_lasso, newx = model.matrix(Apps~., College_test)[, -1])
+test_err_lasso = mean((lasso.pred_test - College_test$Apps)^2)
+test_err_lasso
+
+```
+The value of $\lambda$ chosen by smallest cross-validation error is 3.495947. The train error is 994152.8, and the test error is 1292839. 
+
+(g)
+The test errors of different methods range from 1223126 to 1380054, with mean 1310268 and standard deviation 51908. We can predict the number of college applications received most accurately by ridge regression. For prediction, I recommend the ridge regression method because it has the smallest test error from the prediction model. For interpretation, I recommend the AIC criterion method because it uses fewer variables than the other with similar test errors.

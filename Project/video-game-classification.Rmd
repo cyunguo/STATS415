@@ -1,0 +1,175 @@
+---
+title: "Video-game-classification"
+author: "Wenfei Yan"
+date: "4/2/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Origin Question:
+Can we predict whether the game is rated as "positive", "mixed", or "negative"?
+
+We look in the the user score, with range [0,10]. Since user score is a continuous variable, we tried to classify games with user score in (7.5, 10] as positive, in (5.0. 7.5] as mixed, and [0,5.0] as negative.
+
+```{r}
+# clean the data
+setwd("/Users/Fay/2017-2018_Winter/STATS 415/415Project")
+games = read.csv("./data/Video_Games_Sales_as_at_22_Dec_2016.csv")
+games.no.na = na.omit(games)
+games.no.na = games.no.na[,-1]
+# str(games.no.na)
+games.no.na$User_Score = as.character(games.no.na$User_Score)
+games.no.na$User_Score = as.numeric(games.no.na$User_Score)
+str(games.no.na)
+# dim(games.no.na)
+# add user.score.level
+games.no.na$user.score.level = "negative"
+games.no.na$user.score.level[games.no.na$User_Score>5] = "mixed"
+games.no.na$user.score.level[games.no.na$User_Score>7.5] = "positive"
+sum(games.no.na$User_Score>7.5)
+sum(games.no.na$User_Score>5 & games.no.na$User_Score<=7.5)
+sum(games.no.na$User_Score<=5)
+```
+
+However, we found that the three classes are unbalanced, which will lead problmes in prediciton. The "negative" class has too few games, which means it might be kind of "ignored" in the classifier. Although there're several techiniques to combact unblaneced classes problem, it is beyond the scope of this course. We simply change our classes to prevent this problem. We change the previous question to 
+## New Question:
+Can we predict whether the game is rated as "positive" or not?  
+A game with user score in (7.5, 10] is considered to be rated as "positive"", and "not positive" otherwise.
+```{r}
+# delete user.score.level
+games.no.na = games.no.na[, -which(names(games.no.na)=="user.score.level")]
+# add user.score.positive
+games.no.na$user.score.positive = games.no.na$User_Score > 7.5
+games.no.na$user.score.positive = as.factor(games.no.na$user.score.positive)
+```
+```{r}
+# split training and test data
+positive = which(games.no.na$user.score.positive == TRUE)
+not.positive = which(games.no.na$user.score.positive == FALSE)
+train.id = c(sample(positive, floor(0.8*length(positive))), 
+             sample(not.positive, floor(0.8*length(not.positive))))
+```
+
+### KNN
+First I tried KNN. As all the categorical variables have many levels, it's hard to use them in KNN. I just omit all of them. 
+```{r}
+# knn
+library(caret)
+data.knn = games.no.na[,c(5,6,7,8,9,10,11,13,16)]
+# head(data.knn)
+# 10-fold cv
+ctrl <- trainControl(method  = "cv", number  = 10)
+knn.fit <- train(user.score.positive ~ ., data = data.knn[train.id,], method = "knn",
+                 tuneGrid   = expand.grid(k = seq(11,149,2)),
+                 trControl = ctrl, preProcess = c("center","scale"))
+plot(Accuracy~k, data = knn.fit$results)
+best = knn.fit$result[knn.fit$result$Accuracy == max(knn.fit$results$Accuracy),]
+1 - best$Accuracy
+```
+The cv-accuracy is not satysfying. Try dim-reduction (PCA), see if better.
+```{r}
+X <- model.matrix(user.score.positive ~ ., data = data.knn[train.id,])[, -1]
+knn.PCA = prcomp(x = X, center = T, scale = T)
+summary(knn.PCA)
+data.knn.PCA = as.data.frame(knn.PCA$x[,c(1,2,3,4)])
+data.knn.PCA$user.score.positive = data.knn$user.score.positive[train.id]
+# head(data.knn.PCA)
+ctrl <- trainControl(method  = "cv", number  = 10)
+knn.fit.PCA <- train(user.score.positive ~ ., data = data.knn.PCA, method = "knn", 
+                     tuneGrid   = expand.grid(k = seq(11,149,2)),
+                     trControl = ctrl, preProcess = c("center","scale"))
+plot(Accuracy~k, data = knn.fit.PCA$results)
+best = knn.fit.PCA$result[knn.fit.PCA$result$Accuracy == max(knn.fit.PCA$results$Accuracy),]
+1 - best$Accuracy
+```
+Unfortunately, there's no apparent improvement. KNN might not be suitable.
+
+### Desicion Tree
+As the tree funtion in pacakge tree can not deal with factors with more than 32 levels, I delete some of the facotr predictors, who have too many levels. Year_of_Release, Publisher and Developer are deleted.
+```{r}
+library(tree)
+# names(games.no.na)
+data_tree = games.no.na[, -c(2,4,12,14)]
+# data_tree = games.no.na[, c(9,10,16)]
+# head(data_tree)
+tree.fit = tree(user.score.positive ~ ., data = data_tree[train.id,])
+tree.fit
+summary(tree.fit)
+# set.seed(2109)
+# tree.fit.cv = cv.tree(tree.fit, FUN = prune.misclass)
+# tree.fit.cv
+prune.tree.fit = prune.misclass(tree.fit, best = 6)
+summary(prune.tree.fit)
+# test error
+tree.pred=predict(prune.tree.fit, data_tree[-train.id,], type="class")
+table(tree.pred,data_tree$user.score.positive[-train.id])
+sum(tree.pred!=data_tree$user.score.positive[-train.id])/1404
+```
+The training and test error are both around 0.278, a little bit better than knn, but still not ideal.
+
+### Random Forest
+As the randomForest funtion in pacakge randomForest can not deal with factors with more than 53 levels, I delete some of the facotr predictors, who have too many levels. Publisher and Developer are deleted.
+```{r}
+library(randomForest)
+data_rf = games.no.na[, -c(4, 12, 14)]
+# n_range = seq(100,1000, by = 10)
+# test_error = rep(0, length(n_range))
+# for (i in 1:length(n_range)) {
+# rf.fit = randomForest(user.score.positive ~ ., data = data_rf[train.id,], ntree = n_range[i])
+# rf.fit
+# ypred.rf = predict(rf.fit,newdata = data_rf[-train.id,])
+# # table(ypred.rf, data_tree$user.score.positive[-train.id])
+# test_error[i] = sum(ypred.rf!=data_tree$user.score.positive[-train.id])/1404
+# }
+# min(test_error)
+# n_range[which(test_error == min(test_error))]
+# plot(n_range, test_error)
+rf.fit = randomForest(user.score.positive ~ ., data = data_rf[train.id,], ntree = 260, importance = TRUE)
+importance(rf.fit)
+varImpPlot(rf.fit)
+ypred.rf = predict(rf.fit,newdata = data_rf[-train.id,])
+sum(ypred.rf!=data_tree$user.score.positive[-train.id])/1404
+```
+The best test error is around 0.225. However, this is still not desirable.
+
+Critic score is always the most important predictor.
+
+### Ada boost
+```{r}
+library(gbm)
+data_boost = games.no.na[, -c(4, 12, 14)]
+data_boost$user.score.positive = as.numeric(data_boost$user.score.positive)-1
+boost.fit = gbm(user.score.positive ~ ., data = data_boost[train.id,], distribution = "adaboost", n.trees = 2700)
+boost.test.pred = predict(boost.fit, newdata = data_boost[-train.id,], n.trees = 2700)
+boost.test.pred = sign(boost.test.pred)
+boost.test.pred[boost.test.pred==-1] = 0
+sum(boost.test.pred != data_boost$user.score.positive[-train.id])/1404
+```
+The best test error is around 0.255, worse than the random forest result.
+
+
+### SVM
+```{r}
+library(e1071)
+data_svm = games.no.na[,c(5,6,7,8,9,10,11,13,16)]
+svm.fit <- svm(user.score.positive ~ ., data = data_svm[train.id,], 
+               kernel = "linear", cost = 10, scale = TRUE)
+svm.test.pred = predict(svm.fit, newdata = data_svm[-train.id,])
+sum(svm.test.pred != data_svm$user.score.positive[-train.id])/1404
+
+svm.fit.rad <- svm(user.score.positive ~ ., data = data_svm[train.id,], 
+               kernel = "radial", cost = 5, scale = TRUE)
+svm.test.pred = predict(svm.fit.rad, newdata = data_svm[-train.id,])
+sum(svm.test.pred != data_svm$user.score.positive[-train.id])/1404
+```
+The test error is even higher with svm....
+
+
+
+
+
+
+

@@ -1,0 +1,137 @@
+---
+title: "STATS415hw9"
+author: "Yunguo Cai"
+date: "3/28/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tree)
+library(MASS)
+attach(crabs)
+```
+
+(a)
+```{r}
+set.seed(45678)
+crab_bm = which(crabs$sp == "B" & crabs$sex == "M")
+crab_bf = which(crabs$sp == "B" & crabs$sex == "F")
+crab_om = which(crabs$sp == "O" & crabs$sex == "M")
+crab_of = which(crabs$sp == "O" & crabs$sex == "F")
+train_id = c(sample(crab_bf, size = trunc(0.80 * length(crab_bf))),
+sample(crab_bm, size = trunc(0.80 * length(crab_bm))),
+sample(crab_of, size = trunc(0.80 * length(crab_of))),
+sample(crab_om, size = trunc(0.80*length(crab_om)))) 
+crab_train = crabs[train_id, ]
+crab_test = crabs[-train_id, ]
+```
+
+(b)
+```{r}
+tree.species=tree(sp~.-index-sp,crab_train)
+set.seed(45678)
+cv.species=cv.tree(tree.species,FUN = prune.misclass)
+cv.species
+```
+```{r}
+prune.species=prune.misclass(tree.species,best=8)
+plot(prune.species)
+text(prune.species,pretty=0)
+```
+```{r}
+summary(prune.species)
+```
+
+```{r}
+tree.pred_train=predict(prune.species,crab_train,type="class")
+table(tree.pred_train,crab_train$sp)
+training_err=sum(tree.pred_train != crab_train$sp)/160
+training_err
+tree.pred_test=predict(prune.species,crab_test,type="class")
+table(tree.pred_test,crab_test$sp)
+test_err=sum(tree.pred_test != crab_test$sp)/40
+test_err
+```
+
+From the cross validation, the best tree with no more than 8 splits is the one with 7 splits (size = 8). Only 3 variables are used in this tree, which are FL, CW, and BD. Since the first split is based on FL, it seems to be the most important predictor. The traning error is 0.04375, and the test error is 0.15.
+
+(c)
+```{r}
+library(randomForest)
+set.seed(45678)
+rf.crabs=randomForest(sp~.-index-sp,data=crabs,subset=train_id,ntree=1000,mtry=3,importance=TRUE) 
+rf.pred_train = predict(rf.crabs,crab_train,type="class")
+rf.pred_test = predict(rf.crabs,crab_test,type="class")
+table(rf.pred_train,crab_train$sp)
+train_err.rf=sum(rf.pred_train != crab_train$sp)/160
+train_err.rf
+table(rf.pred_test,crab_test$sp)
+test_err.rf=sum(rf.pred_test != crab_test$sp)/40
+test_err.rf
+varImpPlot(rf.crabs)
+```
+
+The variable importance plot shows that FL,BD and CW are the most important predictors, which is the same as the previous single tree chosen by cross validation. FL ranks first in the importance plot, while the variable used in the first split in the single tree is also FL. So FL seems to be the most important predictor. The traning error is 0, and the test error is 0.05.
+
+(d)
+```{r}
+library(gbm)
+set.seed(45678)
+crabs$sp = as.numeric(crabs$sp)-1
+# 0 -> blue, 1 -> orange
+crab_train = crabs[train_id,]
+crab_test = crabs[-train_id,]
+n = 100
+boost.err_train = rep(0, n)
+boost.err_test = rep(0, n)
+M_range = seq(from = 10, to = 1000, length.out = n)
+for (i in seq(1,n)){
+boost.crabs = gbm(sp ~ ., data = crab_train, distribution = "adaboost", n.trees = M_range[i])
+boost.pred_train = predict(boost.crabs, newdata = crab_train, n.trees = M_range[i]) 
+boost.pred_train = sign(boost.pred_train)
+boost.pred_train[boost.pred_train==-1] = 0
+boost.err_train[i] = sum(boost.pred_train != crab_train$sp)/160
+boost.pred_test = predict(boost.crabs, newdata = crab_test, n.trees = M_range[i]) 
+boost.pred_test = sign(boost.pred_test)
+boost.pred_test[boost.pred_test==-1] = 0
+boost.err_test[i] = sum(boost.pred_test != crab_test$sp)/40
+}
+plot(M_range, boost.err_train, col = "blue", lty = 1, pch = 1, type = "b",
+ylim = c(min(min(boost.err_train), min(boost.err_test)), max(max(boost.err_train), max(boost.err_test))))
+lines(M_range, boost.err_test, col = "red", lty = 2, pch = 2, type = "b") 
+legend("bottomright", c("train", "test"), col = c("blue", "red"), lty = c(1, 2), pch = c(1,2))
+boost.err_train[n]
+boost.err_test[n]
+```
+
+```{r,eval=TRUE,echo=FALSE}
+set.seed(45678)
+n1 = 1000
+boost.err_train_1 = rep(0, n1)
+boost.err_test_1 = rep(0, n1)
+M_range_1 = seq(from = 10, to = 10000, length.out = n1)
+for (i in seq(1,n1)){
+boost.crabs_1 = gbm(sp ~ ., data = crab_train, distribution = "adaboost", n.trees = M_range_1[i])
+boost.pred_train_1 = predict(boost.crabs_1, newdata = crab_train, n.trees = M_range_1[i]) 
+boost.pred_train_1 = sign(boost.pred_train_1)
+boost.pred_train_1[boost.pred_train_1==-1] = 0
+boost.err_train_1[i] = sum(boost.pred_train_1 != crab_train$sp)/160
+boost.pred_test_1 = predict(boost.crabs_1, newdata = crab_test, n.trees = M_range_1[i]) 
+boost.pred_test_1 = sign(boost.pred_test_1)
+boost.pred_test_1[boost.pred_test_1==-1] = 0
+boost.err_test_1[i] = sum(boost.pred_test_1 != crab_test$sp)/40
+}
+plot(M_range_1, boost.err_train_1, col = "blue", lty = 1, pch = 1, type = "b",
+ylim = c(min(min(boost.err_train_1), min(boost.err_test_1)), max(max(boost.err_train_1), max(boost.err_test_1))))
+lines(M_range_1, boost.err_test_1, col = "red", lty = 2, pch = 2, type = "b") 
+legend("bottomright", c("train", "test"), col = c("blue", "red"), lty = c(1, 2), pch = c(1,2))
+boost.err_train_1[n1]
+boost.err_test_1[n1]
+```
+
+(e) From previous results, the random forest performs best with training error 0 and test error 0.05, and it's relatively stable whatever the sample order of different color and gender combinations are. In terms of the importance of the variables, the results are consistent between the single pruned tree and the random forest tree. There’s no obvious trend in the training and test error as the number of trees changes, and the training and test error of adaboost are worse than both the single pruned tree and random forest, regardless of the value of M. When I run the M range up to 10000, it becomes much better. It shows obvious decreasing trend and much lower errors. So I think the bad performance of boost is caused by the low upper bound of M, which is 1000. We can conclude that we need a large M to get more correct adaboost model.
+

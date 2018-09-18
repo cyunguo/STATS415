@@ -1,0 +1,101 @@
+---
+title: "STATS415 hw2"
+author: "Yunguo Cai"
+date: "1/22/2018"
+output:
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r,message=FALSE,warning=FALSE}
+
+library("ISLR")
+```
+```{r}
+help("Carseats")
+data("Carseats")
+```
+1.
+```{r,warning=FALSE}
+#Fit a multiple regression model to predict Sales using all other variables in the model
+mod1 <- lm(Sales ~., data = Carseats)
+summary(mod1)
+```
+     
+The values of coefficients are shown above. The coefficients for Intercept, ComPrice, Income, Advertising, Population, Price, ShelveLovGood, ShelveLocMedium, Age, Education, UrbanYes and USYes are 5.6606, 0.0928, 0.0158, 0.1231, 0.0002,-0.0954, 4.8502, 1.9567, -0.046, -0.0211, 0.1229, -0.1841 respectively. The $R^2$ of this model is 0.8734, which means that the model explains 87.34% of the total variation. 87.34% is a large proportion, so the model fits well according to $R^2$. 
+       
+
+```{r}
+#plot of residuals
+plot(mod1$residuals ~ mod1$fitted.values, main="Model 1 Residual Plot", 
+xlab = "Fitted values", ylab = "Residuals")
+abline(a = 0, b = 0, col = "gray60")
+```
+
+The plot of residuals shows that the variance of the residuals doesn't have an obvious trend to vary a lot, so we could assume that the variance of error terms remains constant. It seems that when $\hat{y}$ is smaller, the residuals are slightly larger and there exists an outlier of residuals over 3 when $\hat{y}$ = 10. The residuals of -2 to -3 when $\hat{y}$ is about 6-7 might also be outliers since they are scattered outside a bit.
+
+2.          
+
+The variables Comprice, Income, Advertising, Price, ShelveLocGood, ShelveLocMedium, Age correspond to significant p-values at the significance level of 0.001. The null hypothesis that the p-values are testing is that the coefficients of these corresponding variables equal to 0.
+
+3.
+```{r}
+#Fit the linear model with remaining significant variables
+mod2 <- lm(Sales ~ CompPrice + Income + Advertising + Price + ShelveLoc + Age, data = Carseats)
+summary(mod2)
+```
+    
+Using $R^2$, the $R^2$ of this model is 0.872, slightly smaller than 0.8734 of the previous model. Dropping off all the variables that are not significant in the previous model doesn't make much difference in explaining the total variance. This model also fits well.
+
+4.
+```{r}
+#Use anova() to formally compare the two models above
+anova(mod2, mod1)
+```
+     
+From ANOVA, the F-test shows that the F-value is 1.0964, quite low, which means that the group means are close together (low variability) relative to the variability within each group. The corresponding p-value is 0.358, much larger than 0.05. So we can't reject the null hypothesis that the second model which drops off insignificant variables is sufficient. There's not much difference between their $R^2$, so the first model can't be proved to fit significantly better than the second model. This agrees to the conclusion in question 3.
+
+5.  
+
+Mod1 is:    
+Sales=5.661+0.093$\times$CompPrice+0.016$\times$Income+0.123$\times$Advertising+0.0002$\times$Population+0.095$\times$Price    
++4.85$\times$ShelveLocGood+1.957$\times$ShelveLocMedium+0.046$\times$Age+0.021$\times$Education+0.123$\times$UrbanYes-0.184$\times$USYes
+
+
+Mod2 is:     
+Sales=5.475+0.093$\times$CompPrice+0.016$\times$Income + 0.116$\times$Advertising+0.095$\times$Price+4.836$\times$ShelveLocGood     
++1.952$\times$ShelveLocMedium+0.046$\times$Age
+
+
+Unit sales (in thousands) at each location:
+The coefficient for CompPrice is 0.092, which means that when all the other variables remain the same, the price charged by competitor is increased by 1 unit, then the sales will be increased by 0.092 unit.
+The coefficient for Income is 0.016, which means that when all the other variables remain the same, the community income level is increased by 1 thousand dollars, then the sales will be increased by 0.016 unit.
+The coefficient for Advertising is 0.116, which means that when all the other variables remain the same, the local advertising budget for company is increased by 1 thousand dollars, then the sales will be increased by 0.116 unit.
+The coefficient for Price is -0.095, which means that when all the other variables remain the same, the price company charges for car seats is increased by 1 unit, then the sales will be decreased by 0.095 unit.
+The coefficient for ShelveLocGood is 4.836, which means that when all the other variables remain the same, if the quality of the shelving location for the car seats is good, then the sales will be increased by 4.836 unit.
+The coefficient for ShelveLocMedium is 1.952, which means that when all the other variables remain the same, if the quality of the shelving location for the car seats is medium, then the sales will be increased by 1.952 unit.
+The coefficient for Age is 0.046, which means that when all the other variables remain the same, the average age of the local population is increased by 1 year, then the sales will be increased by 0.046 unit.
+
+6.
+```{r}
+#Add the interaction term between the categorical variable ShelveLoc and Price
+mod3 <- lm(Sales ~ CompPrice + Income + Advertising + Price + ShelveLoc + Age + ShelveLoc*Price, data = Carseats)
+summary(mod3)
+```
+      
+The values of coefficients are shown above. The coefficients for Intercept, ComPrice, Income, Advertising, Population, Price, ShelveLovGood, ShelveLocMedium, Age, Price:ShelveLocGood, Price:ShelveLocMedium are 5.8668, 0.0926, 0.0158, 0.1160, -0.0986, 4.1850, 1.5350, -0.0465, 0.0056, 0.0037 respectively. 
+The coefficient for Price:ShelveLocGood is 0.0056, which means that when all the other variables remain the same, if the quality of the shelving location for the car seats is good, then the coefficient for Price will be increased by 0.0056. The p-value associated with this interaction term is 0.3730, much bigger than 0.05, which suggests that it is not significant.
+The coefficient for Price:ShelveLocMedium is 0.004, which means that when all the other variables remain the same, if the quality of the shelving location for the car seats is medium, then the coefficient for Price will be increased by 0.004. The p-value associated with this interaction term is 0.4984, much bigger than 0.05, which suggests that it is not significant.
+
+7.
+```{r}
+#Compare model from Q3 to the model from Q6
+anova(mod2,mod3)
+```
+       
+From ANOVA, the F-test shows that the F-value is 0.4171, quite low, which means that the group means are close together (low variability) relative to the variability within each group. The corresponding p-value is 0.6593, much larger than 0.05. So we can't reject the null hypothesis that the second model which drops off the interaction term is sufficient. There's not much difference between their $R^2$, so the second model can't be proved to fit significantly better than the third model which adds the interaction term. The model without the interaction term fits well enough, so we can choose to drop off the interaction term.

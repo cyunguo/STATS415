@@ -1,0 +1,116 @@
+---
+title: "Lab7"
+author: "Yunguo Cai"
+date: "3/10/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ISLR) 
+data(Hitters)
+# Eliminate all cases with missing data (this is not always best practice, but # we're ignoring that for the purposes of this lab)
+Hitters <- na.omit(Hitters)
+```
+
+```{r}
+# Create a matrix of all predictors to be used for PCA (without an intercept)
+X <- model.matrix(Salary ~ ., data = Hitters)[, -1] 
+# Run PCA
+hitPCA <- prcomp(x = X, center = T, scale = F)
+```
+
+```{r}
+summary(hitPCA)
+```
+```{r}
+names(hitPCA)
+```
+```{r}
+ X.centered <- apply(X, 2, function(x) x - mean(x))
+hitEigen <- eigen(var(X.centered))
+cbind("eigen" = hitEigen$vectors[, 1], "prcomp" = hitPCA$rotation[, 1])
+```
+```{r}
+set.seed(1)
+train <- sample(1:nrow(Hitters), trunc(nrow(Hitters)/2))
+```
+
+```{r}
+library(pls)
+```
+```{r}
+set.seed(1)
+hitPCR <- pcr(Salary ~ ., data = Hitters, subset = train, scale = TRUE, validation = "CV")
+```
+
+```{r}
+names(hitPCR)
+```
+```{r}
+summary(hitPCR)
+```
+```{r}
+validationplot(hitPCR, val.type = "MSEP", legendpos = "topright")
+```
+```{r}
+hitPCR.pred <- predict(hitPCR, Hitters[-train, names(Hitters) != "Salary"], ncomp = 6) 
+PCRTestMSE <- mean((hitPCR.pred - Hitters[-train, "Salary"])^2)
+PCRTestMSE
+```
+```{r}
+# Get the "original predictor" coefficients for the PCR in which k = 1. Note the # weird syntax: coefficients are stored as an "array"
+hitPCR$coefficients[, , 1]
+```
+```{r}
+set.seed(1)
+hitPLS <- plsr(Salary ~ ., data = Hitters, subset = train, scale = TRUE, validation = "CV")
+summary(hitPLS)
+```
+```{r}
+ hitPLS.pred <- predict(hitPLS, Hitters[-train, names(Hitters) != "Salary"], ncomp = 2) 
+PLSTestMSE <- mean((hitPLS.pred - Hitters[-train, "Salary"])^2)
+PLSTestMSE
+```
+```{r}
+ library(glmnet)
+X <- model.matrix(Salary ~ ., Hitters)[, -1] 
+Y <- Hitters$Salary
+```
+```{r}
+set.seed(1)
+ridgeMod <- glmnet(X[train, ], Y[train], alpha = 0) 
+ridgeCV <- cv.glmnet(X[train, ], Y[train], alpha = 0) 
+lambda <- ridgeCV$lambda.min
+lambda
+```
+```{r}
+ridge.pred <- predict(ridgeCV, s = lambda, newx = X[-train, ]) 
+ridgeTestMSE <- mean((ridge.pred - Y[-train])^2)
+ridgeTestMSE
+```
+```{r}
+set.seed(1)
+lassoMod <- glmnet(X[train, ], Y[train], alpha = 1) 
+lassoCV <- cv.glmnet(X[train, ], Y[train], alpha = 1) 
+lambda <- lassoCV$lambda.min
+lambda
+```
+```{r}
+lasso.pred <- predict(lassoCV, s = lambda, newx = X[-train, ])
+lassoTestMSE <- mean((lasso.pred - Y[-train])^2)
+lassoTestMSE
+```
+```{r}
+d <- data.frame("TestMSE" = c(PCRTestMSE, PLSTestMSE, ridgeTestMSE, lassoTestMSE)) 
+rownames(d) <- c("PCR", "PLS", "Ridge", "Lasso")
+knitr::kable(d)
+```
+
+```{r}
+
+```
+

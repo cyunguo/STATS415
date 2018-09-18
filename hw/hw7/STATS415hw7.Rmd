@@ -1,0 +1,90 @@
+---
+title: "STATS415hw7"
+author: "Yunguo Cai"
+date: "3/14/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,include=FALSE}
+library(ISLR)
+library(pls)
+set.seed(23456)
+test_id = sample(1:nrow(College), size = floor(0.3 * nrow(College)))
+College_train = College[-test_id, ]
+College_test = College[test_id, ]
+```
+1.
+```{r}
+X <- model.matrix(Apps ~ ., data = College)[, -1] 
+collegePCA <- prcomp(x = X, center = T, scale = T)
+summary(collegePCA)
+plot(collegePCA)
+collegePCA$rotation[,1:2]
+```
+We need 9 eigenvalues to explain 90% of the variance in the data.
+The loadings w1j, w2j mean the weights of each (original) variable in the new linear combination variable Z1, Z2.Zi = wi1x1+wi2x2+...wi17x17.
+2.
+```{r}
+set.seed(23456)
+collegePCR = pcr(Apps ~ ., data = College_train, scale = TRUE, validation = "CV")
+#summary(collegePCR)
+validationplot(collegePCR, val.type = "MSEP", legendpos = "topright")
+validationMSE1 = numeric(collegePCR$ncomp)
+for (i in 1:collegePCR$ncomp) {
+  validationMSE1[i] = mean((collegePCR$validation$pred[,,i] - College_train$Apps)^2)
+}
+K_PCR = which.min(validationMSE1)
+K_PCR
+collegePCR_train = predict(collegePCR, College_train, ncomp = K_PCR)
+PCRTrainMSE = mean((collegePCR_train - College_train$Apps)^2)
+PCRTrainMSE
+collegePCR_test = predict(collegePCR, College_test, ncomp = K_PCR)
+PCRTestMSE = mean((collegePCR_test - College_test$Apps)^2)
+PCRTestMSE
+```
+
+The training error is 993164.6 and test error is 1300431, along with the value of K selected is 17.
+
+3.
+```{r}
+set.seed(23456)
+collegePLS = plsr(Apps ~ ., data = College_train, scale = TRUE, validation = "CV")
+#summary(collegePLS)
+validationplot(collegePLS, val.type = "MSEP", legendpos = "topright")
+validationMSE2 = numeric(collegePLS$ncomp)
+for (i in 1:collegePLS$ncomp) {
+  validationMSE2[i] = mean((collegePLS$validation$pred[,,i] - College_train$Apps)^2)
+}
+K_PLS = which.min(validationMSE2)
+K_PLS
+collegePLS_train = predict(collegePLS, College_train, ncomp = K_PLS)
+PLSTrainMSE = mean((collegePLS_train - College_train$Apps)^2)
+PLSTrainMSE
+collegePLS_test = predict(collegePLS, College_test, ncomp = K_PLS)
+PLSTestMSE = mean((collegePLS_test - College_test$Apps)^2)
+PLSTestMSE
+```
+
+The training error is 993169.5 and test error is 1300759, along with the value of K selected is 14.
+
+4.
+```{r,tidy = TRUE}
+test_errOLS = 1300431
+test_errFwd = 1334782
+test_errBwd = 1355206
+test_errAIC = 1282321
+test_errBIC = 1380054
+test_errRidge = 1223126
+test_errLasso = 1292839
+d = data.frame("TestMSE" = c(PCRTestMSE, PLSTestMSE, test_errOLS, test_errFwd, test_errBwd, 
+                             test_errAIC, test_errBIC, test_errRidge, test_errLasso)) 
+rownames(d) = c("PCR", "PLS", "OLS", "Fwd", "Bwd", "AIC", "BIC", "Ridge", "Lasso")
+knitr::kable(d)
+```
+The test error is smallest for the ridge regression, followed by AIC method and Lasso. This suggests that ridge regression model performs best on our test data and we choose ridge regression.
+
+

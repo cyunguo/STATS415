@@ -1,0 +1,48 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{epstopdf}
+\usepackage{color}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage{xcolor}
+\begin{document}
+
+\section*{STATS415 Project Proposal: Video Game Sales with Ratings}
+	\begin{center}
+		\textbf{Group members}: Runhe Lu, Yunguo Cai, Wenfei Yan\\
+		\textbf{Lab Section}: Lab 03\\
+		 \textbf{Data Resource}: https://www.kaggle.com/rush4ratio/video-game-sales-with-ratings\\
+	\end{center}
+
+	\section*{Background}
+	Our dataset is about the sales and ratings of video games with 16720 observations.\\
+	For each observation, there are 16 variables, including 4 categorical variables in the dataset: \\
+	\indent Name, Platform, Year\_of\_Release, Genre, Publisher, \\
+	\indent NA\_Sales, EU\_Sales, JP\_Sales, Other\_Sales, Global\_Sales,\\
+	\indent Critic\_score, Critic\_count, User\_score, User\_count, Developer and Rating.\\
+	Among these, Platform, genre, developer and publisher are categorical variables.
+	
+	\section*{Objectives}
+	We aim to predict how different factors would affect the sales of video games. Average ratings across the 13 genre groups will be calculated per platform, per region and per decade to be used as predictors. We will present you with the following results of our data exploration and visualization techniques.
+		\begin{enumerate}
+		\item Which one is the best console: Wii, PS or XBOX?
+		\item Do cross-platform games sell better than monopoly games?
+		\item Can we make some predictions on sale number of games based on their genre?
+		\item What's the overall trending in game market these years? 
+		\item What's the relationship between the video games and user scores and critic scores?
+		\end{enumerate}
+
+	\section*{Specification}
+    We will apply the data mining methods discussed in class to the project as follows.
+		\begin{enumerate}
+		\item Obtain the sales of video games with respect to genre, platform, rating scores and timestamp using 2-by-2 histograph.
+		\item Compare the correlaition between platform, genere, rating scores and timestamp with heatmap.
+		\item Examine if the PCA components could be generalized to predict the platform of video games with an unknown genre.
+		\item Predict the sales of the overall trending in game market these years by regression.
+		\item Cluster users based on their rating behavior and find the highest-rating genre of video games specific to each clustering group.
+		\end{enumerate}
+		Tools used: Language R
+
+	\section*{}
+\end{document}

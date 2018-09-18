@@ -1,0 +1,154 @@
+---
+title: "STATS415hw8"
+author: "Yunguo Cai"
+date: "3/16/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,include=FALSE}
+library(ISLR)
+library(MASS)
+library(splines)
+library(boot)
+library(gam)
+attach(Boston)
+```
+(a)
+```{r}
+set.seed(34567)
+train = sample(1:nrow(Boston),floor(nrow(Boston)*0.8))
+Boston_train = Boston[train, ]
+Boston_test = Boston[-train, ]
+```
+
+(b)
+```{r}
+#polynomial regression
+set.seed(34567)
+cv.error_poly = rep(0,17) 
+for (i in 1:17){
+  fit_poly=glm(nox~poly(dis,i),data=Boston_train)
+  cv.error_poly[i]=cv.glm(Boston_train, fit_poly, K=10)$delta[1] 
+}
+cv.error_poly
+```
+```{r}
+fit.1=lm(nox~dis,data=Boston_train)
+fit.2=lm(nox~poly(dis,2),data=Boston_train)
+fit.3=lm(nox~poly(dis,3),data=Boston_train)
+fit.4=lm(nox~poly(dis,4),data=Boston_train)
+fit.7=lm(nox~poly(dis,7),data=Boston_train)
+anova(fit.1,fit.2,fit.3,fit.4,fit.7)
+```
+```{r}
+fit.poly=lm(nox~poly(dis,7),data=Boston_train)
+summary(fit.poly)
+```
+
+For the polynomial regression, choose the degree of freedom of 7. Though degree=16 gives the least error, from the hypothesis test we can see that the cv error doesn't vary much after 7 and p value is significant at the confidence level of 0.05, so I choose degree=7.
+
+```{r}
+#natural spline
+set.seed(34567)
+cv.error_ns = rep(0,15)
+for (i in 1:15){
+  fit_ns=glm(nox~ns(dis,df = i),data=Boston_train)
+  cv.error_ns[i]=cv.glm(Boston_train, fit_ns, K=10)$delta[1] 
+}
+which.min(cv.error_ns)
+cv.error_ns
+```
+
+For the natural spline, choose the degree of freedom of 9. The cv error goes down first and then increases, which indicates that the model has bigger bias at first and then fits better and after dof=9, it becomes overfitting.
+
+```{r}
+#smoothing spline
+set.seed(34567)
+fit_ss=smooth.spline(Boston_train$dis,Boston_train$nox,cv=TRUE)
+```
+```{r}
+fit_ss
+```
+
+For the smooth spline, choose the degree of freedom of 15.99.$\lambda=7.57\times10^{-5}$. The error is 0.00365.
+
+(c)
+```{r}
+#polynomial regression
+dislims=range(Boston_train$dis)
+dis.grid=seq(from=dislims[1],to=dislims[2],length.out = 200)
+fit.17=lm(nox~poly(dis,17),data=Boston_train)
+preds1=predict(fit.1,newdata=data.frame(dis=dis.grid))
+preds7=predict(fit.poly,newdata=data.frame(dis=dis.grid))
+preds17=predict(fit.17,newdata=data.frame(dis=dis.grid))
+plot(Boston_train$dis,Boston_train$nox,xlim=dislims,ylim=-0.2:1,cex=.5,col="darkgrey")
+title("Polynomial regression")
+lines(dis.grid,preds1,lwd=2,col="blue")
+lines(dis.grid,preds7,lwd=2,col="red")
+lines(dis.grid,preds17,lwd=2,col="green")
+legend("bottomleft",legend=c("d=1","d=7","d=17"),col=c("blue","red","green"),lty=1,lwd=2,cex=.8)
+```
+
+In the polynomial regression, when d is smaller than what we choose (when d=1), the fit is smooth and linear and the bias is bigger. As d increases, the model fits the training points better, but the variance also gets bigger. So with the further increase of d, the model becomes overfitting (like the one when d=17).
+
+```{r}
+#natural spline
+fit.5=glm(nox~ns(dis,df = 5),data=Boston_train)
+fit_ns=glm(nox~ns(dis,df = 9),data=Boston_train)
+fit.15=glm(nox~ns(dis,df = 15),data=Boston_train)
+preds_5=predict(fit.5,newdata=data.frame(dis=dis.grid))
+preds_9=predict(fit_ns,newdata=data.frame(dis=dis.grid))
+preds_15=predict(fit.15,newdata=data.frame(dis=dis.grid))
+plot(Boston_train$dis,Boston_train$nox,xlim=dislims,cex=.5,col="darkgrey")
+title("Natural Spline")
+lines(dis.grid,preds_5,lwd=2,col="blue")
+lines(dis.grid,preds_9,lwd=2,col="red")
+lines(dis.grid,preds_15,lwd=2,col="green")
+legend("topright",legend=c("d=5","d=9","d=15"),col=c("blue","red","green"),lty=1,lwd=2,cex=.8)
+```
+
+For the nature spline, when d is smaller than what we choose, the regression is smoother and has bigger bias. With the increase of degree of freedom, the model fits better and gets more sensitive to fluctuation. When dof becomes too big (like dof=15 ), it becomes overfitting.
+
+```{r}
+#smoothing spline
+fit.10=smooth.spline(Boston_train$dis,Boston_train$nox,df=10)
+fit.50=smooth.spline(Boston_train$dis,Boston_train$nox,df=50)
+plot(Boston_train$dis,Boston_train$nox,xlim=dislims,cex=.5,col="darkgrey")
+title("Smoothing Spline")
+lines(fit.50,col="green",lwd=2)
+lines(fit.10,col="red",lwd=2)
+lines(fit_ss,col="blue",lwd=2)
+legend("topright",legend=c("50 DF","10 DF","15.99 DF"),col=c("green","red","blue"),lty=1,lwd=2,cex=.8)
+```
+
+For the smooth spline, it performs similar to nature spline. But it fits better with respect to different area between knots. With the increase of d, the model first fits better and then get overfitting. In all, smooth spline performs better than the other two from cv.
+
+(d)
+```{r}
+set.seed(34567)
+gam=gam(nox~s(dis,15.99)+s(indus,15.99),data=Boston_train)
+par(mfrow=c(1,2))
+plot(gam, se=TRUE,col="blue")
+```
+
+(e)
+```{r}
+test.poly = predict(fit.poly,Boston_test) 
+test.ns = predict(fit_ns,Boston_test) 
+test.ss = predict(fit_ss,dis[-train]) 
+test.gam = predict(gam,Boston_test) 
+nox.test=nox[-train]
+error.poly = mean((nox.test-test.poly)^2)
+error.ns = mean((nox.test-test.ns)^2) 
+error.ss = mean((nox.test-test.ss$y)^2) 
+error.gam = mean((nox.test-test.gam)^2)
+d <- data.frame("TestMSE" = c(error.poly, error.ns, error.ss, error.gam)) 
+rownames(d) <- c("poly regression","natural spline", "smoothing spline"," GAM")
+knitr::kable(d)
+```
+
+From the table, it shows that GAM method gives the least error, thus the best performance in fitting the model. Natural and smoothing spline give similar results, so we can conclude that the ends of data points don't vary much. Polynomial regression has the highest test error, which may be caused by the boundary behaviors, because from the plot in (c) it shows that around dis = 10, the curve has an immediate increase.
